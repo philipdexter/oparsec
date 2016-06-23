@@ -5,3 +5,5 @@ produced code.
 
 Initial results hint that the C version runs in 1.08 seconds while the
 direct translation OCaml code runs in 1.79 seconds.
+
+Compiling with flambda makes the code run a tad slower at 1.82s

@@ -183,15 +183,7 @@ let main () =
   (* int * buffer2; *)
   (* int rv; *)
 
-  let inputFile = "input" in
-  let outputFile = "output" in
-
-  (* Read input data from file *)
-  let fin = open_in inputFile in
-
-
-  let fsin = Scanf.Scanning.from_channel fin in
-
+  let fsin = Scanf.Scanning.from_channel stdin in
 
   Scanf.bscanf fsin "%i\n" (fun i -> numOptions := i) ;
 
@@ -213,13 +205,11 @@ let main () =
          !data.(loopnum).dgrefval <- i)
   done ;
 
-  close_in fin ;
-
-  print_endline "input done" ;
+  Printf.eprintf "input done\n" ;
 
 
-  Printf.printf "Num of Options: %d\n" !numOptions ;
-  Printf.printf "Num of Runs: %d\n" num_runs ;
+  Printf.eprintf "Num of Options: %d\n" !numOptions ;
+  Printf.eprintf "Num of Runs: %d\n" num_runs ;
 
   sptprice := Array.make !numOptions 0. ;
   strike := Array.make !numOptions 0. ;
@@ -242,13 +232,10 @@ let main () =
 
   (* Write prices to output file *)
 
-  let fout = open_out outputFile in
-
-  Printf.fprintf fout "%i\n" !numOptions ;
-
+  Printf.printf "%i\n" !numOptions ;
 
   for i = 0 to (!numOptions-1) do
-      Printf.fprintf fout "%.18f\n" !prices.(i) ;
+      Printf.printf "%.18f\n" !prices.(i) ;
   done
 
 let () = main ()

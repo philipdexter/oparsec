@@ -176,13 +176,6 @@ let bs_thread () =
 
 
 let main () =
-  (* FILE *file; *)
-  (* int i; *)
-  (* int loopnum; *)
-  (* fptype * buffer; *)
-  (* int * buffer2; *)
-  (* int rv; *)
-
   let fsin = Scanf.Scanning.from_channel stdin in
 
   Scanf.bscanf fsin "%i\n" (fun i -> numOptions := i) ;

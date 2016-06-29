@@ -2,28 +2,21 @@
 type opt_type = Call | Put
 
 (* option data *)
-type opt = { mutable s : float
-           ; mutable strike : float
-           ; mutable r : float
-           ; mutable divq : float
-           ; mutable v : float
-           ; mutable t : float
-           ; mutable typ : opt_type
-           ; mutable divs : float
-           ; mutable dgrefval : float
+type opt = { sptprice : float
+           ; strike : float
+           ; rate : float
+           ; divq : float
+           ; volatility : float
+           ; otime : float
+           ; otype : opt_type
+           ; divs : float
+           ; dgrefval : float
            }
 
 
 let data = ref [||]
 let prices = ref [||]
 let numOptions = ref 0
-
-let otype = ref [||]
-let sptprice = ref [||]
-let strike = ref [||]
-let rate = ref [||]
-let volatility = ref [||]
-let otime = ref [||]
 
 let inv_sqrt_2xPI = 0.39894228040143270286
 
@@ -164,7 +157,7 @@ let mainWork ran =
   for i = beg to (en-1) do
 
     (* Calling main function to calculate option value based on Black & Scholes's equation. *)
-    price := blkSchlsEqEuroNoDiv !sptprice.(i) !strike.(i) !rate.(i) !volatility.(i) !otime.(i) !otype.(i) 0 ;
+    price := blkSchlsEqEuroNoDiv !data.(i).sptprice !data.(i).strike !data.(i).rate !data.(i).volatility !data.(i).otime !data.(i).otype 0 ;
     !prices.(i) <- !price ;
 
   done
@@ -181,21 +174,22 @@ let main () =
   Scanf.bscanf fsin "%i\n" (fun i -> numOptions := i) ;
 
   (* alloc spaces for the option data *)
-  data := Array.init !numOptions (fun _ -> { s = 0. ; strike = 0. ; r = 0. ; divq = 0. ; v = 0. ; t = 0. ; typ = Call ; divs = 0. ; dgrefval = 0. }) ;
+  data := Array.init !numOptions (fun _ -> { sptprice = 0. ; strike = 0. ; rate = 0. ; divq = 0. ; volatility = 0. ; otime = 0. ; otype = Call ; divs = 0. ; dgrefval = 0. }) ;
   prices := Array.make !numOptions 0. ;
 
   for loopnum = 0 to (!numOptions - 1) do
     Scanf.bscanf fsin "%f %f %f %f %f %f %c %f %f\n"
       (fun a b c d e f g h i ->
-         !data.(loopnum).s <- a ;
-         !data.(loopnum).strike <- b ;
-         !data.(loopnum).r <- c ;
-         !data.(loopnum).divq <- d ;
-         !data.(loopnum).v <- e ;
-         !data.(loopnum).t <- f ;
-         !data.(loopnum).typ <- if g = 'C' then Call else Put ;
-         !data.(loopnum).divs <- h ;
-         !data.(loopnum).dgrefval <- i)
+         !data.(loopnum) <-
+         { sptprice = a
+         ; strike = b
+         ; rate = c
+         ; divq = d
+         ; volatility = e
+         ; otime = f
+         ; otype = if g = 'C' then Call else Put
+         ; divs = h
+         ; dgrefval = i })
   done ;
 
   Printf.eprintf "input done\n" ;
@@ -203,23 +197,6 @@ let main () =
 
   Printf.eprintf "Num of Options: %d\n" !numOptions ;
   Printf.eprintf "Num of Runs: %d\n" num_runs ;
-
-  sptprice := Array.make !numOptions 0. ;
-  strike := Array.make !numOptions 0. ;
-  rate := Array.make !numOptions 0. ;
-  volatility := Array.make !numOptions 0. ;
-  otime := Array.make !numOptions 0. ;
-  otype := Array.make !numOptions Call ;
-
-
-  for i = 0 to (!numOptions-1) do
-    !otype.(i) <- !data.(i).typ ;
-    !sptprice.(i) <- !data.(i).s ;
-    !strike.(i) <- !data.(i).strike ;
-    !rate.(i) <- !data.(i).r ;
-    !volatility.(i) <- !data.(i).v ;
-    !otime.(i) <- !data.(i).t ;
-  done ;
 
   bs_thread () ;
 

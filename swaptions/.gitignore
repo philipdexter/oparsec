@@ -1,0 +1,8 @@
+*.o
+*.cmx
+*.cmi
+swaptions.native
+swaptions.out
+swaptions
+output.ocaml
+output.c

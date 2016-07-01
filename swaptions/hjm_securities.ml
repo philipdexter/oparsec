@@ -1,5 +1,4 @@
 let num_trials = ref 102400
-let block_size = 16
 
 let nSwaptions = ref 1
 
@@ -34,13 +33,13 @@ let swaption_seed = ref Int64.zero
 let dmatrix nrl nrh ncl nch =
   let nrow = nrh-nrl+1 in
   let ncol = nch-ncl+1 in
-  let m = Array.init nrow (fun _ -> Array.create_float ncol) in
+  let m = Array.init nrow (fun _ -> Array.make ncol 0.0) in
   m
 
 let dmax da db = if da > db then da else db
 
 let dvector nl nh =
-  Array.create_float (nh-nl+1)
+  Array.make (nh-nl+1) 0.0
 
 
 let hjm_Yield_to_Forward
@@ -54,9 +53,7 @@ let hjm_Yield_to_Forward
   for i = 1 to (iN-1) do
     (* as per formula *)
     pdForward.(i) <- (float_of_int (i+1))*.pdYield.(i) -. (float_of_int i)*.pdYield.(i-1)
-  done ;
-
-  1
+  done
 
 let hjm_Drifts
     pdTotalDrift (* Output vector that stores the total drift correction for each maturity *)
@@ -97,50 +94,44 @@ let hjm_Drifts
     for j = 0 to (iFactors-1) do
       pdTotalDrift.(i) <- pdTotalDrift.(i) +. ppdDrifts.(j).(i)
     done
-  done ;
-
-  1
+  done
 
 let ranUnif s =
   (* uniform random number generator *)
-
-  let ix = ref !s in
-
   let open Int64 in
-  let k1 = div !ix 127773L in
-  ix := sub (mul 16807L (sub !ix (mul k1 127773L))) (mul k1 2836L) ;
-  if (!ix < 0L) then ix := (add !ix 2147483647L) ;
-  s := !ix ;
-  (to_float !ix) *. 4.656612875e-10
+  let k1 = div !s 127773L in
+  s := sub (mul 16807L (sub !s (mul k1 127773L))) (mul k1 2836L) ;
+  if (!s < 0L) then s := (add !s 2147483647L) ;
+  (to_float !s) *. 4.656612875e-10
 
+
+let a = [|
+  2.50662823884 ;
+  -18.61500062529 ;
+  41.39119773534 ;
+  -25.4410604963 ;
+|]
+
+let b = [|
+  -8.47351093090 ;
+  23.08336743743 ;
+  -21.06224101826 ;
+  3.13082909833
+|]
+
+let c = [|
+  0.3374754822726147 ;
+  0.9761690190917186 ;
+  0.1607979714918209 ;
+  0.0276438810333863 ;
+  0.0038405729373609 ;
+  0.0003951896511919 ;
+  0.0000321767881768 ;
+  0.0000002888167364 ;
+  0.0000003960315187
+|]
 
 let cumNormalInv u =
-
-  let a = [|
-    2.50662823884 ;
-    -18.61500062529 ;
-    41.39119773534 ;
-    -25.4410604963 ;
-  |] in
-
-  let b = [|
-    -8.47351093090 ;
-    23.08336743743 ;
-    -21.06224101826 ;
-    3.13082909833
-  |] in
-
-  let c = [|
-    0.3374754822726147 ;
-    0.9761690190917186 ;
-    0.1607979714918209 ;
-    0.0276438810333863 ;
-    0.0038405729373609 ;
-    0.0003951896511919 ;
-    0.0000321767881768 ;
-    0.0000002888167364 ;
-    0.0000003960315187
-  |] in
 
   (* Returns the inverse of cumulative normal distribution function. *)
   (* Reference: Moro, B., 1995, "The Full Monte," RISK (February), 57-58. *)
@@ -171,33 +162,22 @@ let discount_Factors_Blocking
     pdDiscountFactors
     iN
     dYears
-    pdRatePath
-    blocksize =
+    pdRatePath =
 
   let ddelt = dYears/.(float_of_int iN) in
 
-  let pdexpRes = dvector 0 ((iN-1)*blocksize-1) in
-
-  for j = 0 to (iN-1)*blocksize-1 do
-    pdexpRes.(j) <- -.pdRatePath.(j)*.ddelt
-  done ;
-  for j = 0 to (iN-1)*blocksize-1 do
-    pdexpRes.(j) <- exp pdexpRes.(j)
-  done ;
+  let pdexpRes = Array.init (iN-1) (fun i -> exp (-.pdRatePath.(i)*.ddelt)) in
 
   (* initializing the discount factor vector *)
-  for i = 0 to (iN*blocksize-1) do
+  for i = 0 to (iN-1) do
     pdDiscountFactors.(i) <- 1.0 ;
   done ;
 
   for i = 1 to (iN-1) do
-    for b = 0 to (blocksize-1) do
-      for j = 0 to i-1 do
-        pdDiscountFactors.(i*blocksize + b) <- pdDiscountFactors.(i*blocksize + b) *. pdexpRes.(j*blocksize + b)
-      done
+    for j = 0 to i-1 do
+      pdDiscountFactors.(i) <- pdDiscountFactors.(i) *. pdexpRes.(j)
     done
-  done ;
-  1
+  done
 
 let hjm_SimPath_Forward_Blocking
      ppdHJMPath (* Matrix that stores generated HJM path (Output) *)
@@ -207,12 +187,11 @@ let hjm_SimPath_Forward_Blocking
      pdForward (* t=0 Forward curve *)
      pdTotalDrift (* Vector containing total drift corrections for different maturities *)
      ppdFactors (* Factor volatilities *)
-     lRndSeed (* Random number seed *)
-     blocksize =
+     lRndSeed (* Random number seed *) =
   (* //This function computes and stores an HJM Path for given inputs *)
 
-  let pdz = dmatrix 0 (iFactors-1) 0 (iN*blocksize - 1) in
-  let randz = dmatrix 0 (iFactors-1) 0 (iN*blocksize - 1) in
+  let pdz = dmatrix 0 (iFactors-1) 0 (iN - 1) in
+  let randz = dmatrix 0 (iFactors-1) 0 (iN - 1) in
 
   let dTotalShock = ref 0. in
 
@@ -223,14 +202,12 @@ let hjm_SimPath_Forward_Blocking
   (* t=0 forward curve stored iN first row of ppdHJMPath *)
   (* At time step 0: insert expected drift *)
   (* rest reset to 0 *)
-  for b = 0 to (blocksize-1) do
-    for j = 0 to (iN-1) do
-      ppdHJMPath.(0).(blocksize*j + b) <- pdForward.(j) ;
+  for j = 0 to (iN-1) do
+    ppdHJMPath.(0).(j) <- pdForward.(j) ;
 
-      for i = 1 to (iN-1) do
-        (* initializing HJMPath to zero *)
-        ppdHJMPath.(i).(blocksize*j + b) <- 0.
-      done
+    for i = 1 to (iN-1) do
+      (* initializing HJMPath to zero *)
+      ppdHJMPath.(i).(j) <- 0.
     done
   done ;
   (* ----------------------------------------------------- *)
@@ -239,15 +216,11 @@ let hjm_SimPath_Forward_Blocking
   (* sequentially generating random numbers *)
 
 
-  for b = 0 to (blocksize-1) do
-    for s = 0 to 0 do
-      for j = 1 to (iN-1) do
-        for l = 0 to (iFactors-1) do
-          (* compute random number in exact same sequence *)
-          (* 10% of the total executition time *)
-          randz.(l).(blocksize*j + b + s) <- ranUnif lRndSeed
-        done
-      done
+  for j = 1 to (iN-1) do
+    for l = 0 to (iFactors-1) do
+      (* compute random number in exact same sequence *)
+      (* 10% of the total executition time *)
+      randz.(l).(j) <- ranUnif lRndSeed
     done
   done ;
 
@@ -257,37 +230,29 @@ let hjm_SimPath_Forward_Blocking
   (* 18% of the total executition time *)
   (* serialB pdz randz blocksize iN iFactors ; *)
   for l = 0 to (iFactors-1) do
-    for b = 0 to (blocksize-1) do
-      for j = 1 to (iN-1) do
-	pdz.(l).(blocksize*j + b) <- cumNormalInv randz.(l).(blocksize*j + b)
-      done
+    for j = 1 to (iN-1) do
+      pdz.(l).(j) <- cumNormalInv randz.(l).(j)
     done
   done ;
+
 
 
   (* ===================================================== *)
   (* Generation of HJM Path1 *)
-  for b = 0 to (blocksize-1) do
-    for j = 1 to (iN-1) do
-      for l = 0 to (iN-(j+1)) do
-        dTotalShock := 0. ;
+  for j = 1 to (iN-1) do
+    for l = 0 to (iN-(j+1)) do
+      dTotalShock := 0. ;
 
-        for i = 0 to (iFactors-1) do
-          dTotalShock := !dTotalShock +. ppdFactors.(i).(l) *. pdz.(i).(blocksize*j + b)
-        done ;
+      for i = 0 to (iFactors-1) do
+        dTotalShock := !dTotalShock +. ppdFactors.(i).(l) *. pdz.(i).(j)
+      done ;
 
-        (* as per formula *)
-        ppdHJMPath.(j).(blocksize*l+b) <- ppdHJMPath.(j-1).(blocksize*(l+1)+b) +. pdTotalDrift.(l)*.ddelt +. sqrt_ddelt *. !dTotalShock
-      done
+      (* as per formula *)
+      ppdHJMPath.(j).(l) <- ppdHJMPath.(j-1).(l+1) +. pdTotalDrift.(l)*.ddelt +. sqrt_ddelt *. !dTotalShock
     done
-  done ;
-
-  1
+  done
 
 let hjm_Swaption_Blocking
-  pdSwaptionPrice (* //Output vector that will store simulation results in the form: *)
-                  (* //Swaption Price *)
-                  (* //Swaption Standard Error *)
   dStrike
   dCompounding    (* //Compounding convention used for quoting the strike (0 => continuous, *)
                   (* //0.5 => semi-annual, 1 => annual). *)
@@ -303,7 +268,6 @@ let hjm_Swaption_Blocking
   ppdFactors
   iRndSeed
   lTrials
-  blocksize
   tid =
 
   (* ddelt = HJM matrix time-step width. e.g. if dYears = 5yrs and *)
@@ -344,7 +308,7 @@ let hjm_Swaption_Blocking
   let pdTotalDrift = ref [||] in
 
   (* ******************************* *)
-  ppdHJMPath := dmatrix 0 (iN-1) 0 (iN*blocksize-1) ; (* **** per Trial data **** *)
+  ppdHJMPath := dmatrix 0 (iN-1) 0 (iN-1) ; (* **** per Trial data **** *)
   pdForward := dvector 0 (iN-1) ;
   ppdDrifts := dmatrix 0 (iFactors-1) 0 (iN-2) ;
   pdTotalDrift := dvector 0 (iN-2) ;
@@ -353,13 +317,9 @@ let hjm_Swaption_Blocking
   (* **** per Trial data **** *)
   (* vector to store rate path along which the swaption payoff will be discounted *)
   let pdDiscountingRatePath = ref [||] in
-  (* vector to store discount factors for the rate path along which the swaption *)
-  let pdPayoffDiscountFactors = ref [||] in
   (* payoff will be discounted *)
   (* vector to store the rate path along which the swap payments made will be discounted         *)
   let pdSwapRatePath = ref [||] in
-  (* vector to store discount factors for the rate path along which the swap *)
-  let pdSwapDiscountFactors = ref [||] in
   (* payments made will be discounted    *)
   (* vector to store swap payoffs *)
   let pdSwapPayoffs = ref [||] in
@@ -376,21 +336,19 @@ let hjm_Swaption_Blocking
   let dSumSimSwaptionPrice = ref 0. in
   let dSumSquareSimSwaptionPrice = ref 0. in
 
-  (* Final returned results *)
-  let dSimSwaptionMeanPrice = ref 0. in
-  let dSimSwaptionStdError = ref 0. in
-
   (* ******************************* *)
-  pdPayoffDiscountFactors := dvector 0 (iN*blocksize-1) ;
-  pdDiscountingRatePath := dvector 0 (iN*blocksize-1) ;
+  (* vector to store discount factors for the rate path along which the swaption *)
+  let pdPayoffDiscountFactors = Array.make iN 1. in
+  pdDiscountingRatePath := dvector 0 (iN-1) ;
   (* ******************************* *)
 
   (* This is the length of the HJM rate path at the time index *)
   iSwapVectorLength := int_of_float ((float_of_int iN) -. dMaturity/.ddelt +. 0.5) ;
   (* corresponding to swaption maturity. *)
   (*  ******************************* *)
-  pdSwapRatePath := dvector 0 (!iSwapVectorLength*blocksize - 1) ;
-  pdSwapDiscountFactors := dvector 0 (!iSwapVectorLength*blocksize - 1) ;
+  pdSwapRatePath := dvector 0 (!iSwapVectorLength - 1) ;
+  (* vector to store discount factors for the rate path along which the swap *)
+  let pdSwapDiscountFactors = Array.make !iSwapVectorLength 1. in
   (*  ******************************* *)
   pdSwapPayoffs := dvector 0 (!iSwapVectorLength - 1) ;
 
@@ -416,10 +374,10 @@ let hjm_Swaption_Blocking
   done ;
 
   (* generating forward curve at t=0 from supplied yield curve *)
-  ignore @@ hjm_Yield_to_Forward !pdForward iN pdYield ;
+  hjm_Yield_to_Forward !pdForward iN pdYield ;
 
   (* computation of drifts from factor volatilities *)
-  ignore @@ hjm_Drifts !pdTotalDrift !ppdDrifts iN iFactors dYears ppdFactors ;
+  hjm_Drifts !pdTotalDrift !ppdDrifts iN iFactors dYears ppdFactors ;
 
   dSumSimSwaptionPrice := 0.0 ;
   dSumSquareSimSwaptionPrice := 0.0 ;
@@ -431,68 +389,59 @@ let hjm_Swaption_Blocking
   while !l <= lTrials-1 do
   (* For each trial a new HJM Path is generated *)
     (* GC: 51% of the time goes here *)
-    ignore @@ hjm_SimPath_Forward_Blocking !ppdHJMPath iN iFactors  dYears  !pdForward  !pdTotalDrift ppdFactors seedref blocksize ;
+    hjm_SimPath_Forward_Blocking !ppdHJMPath iN iFactors  dYears  !pdForward  !pdTotalDrift ppdFactors seedref ;
 
     (* now we compute the discount factor vector *)
 
     for i = 0 to (iN-1) do
-      for b = 0 to (blocksize-1) do
-        !pdDiscountingRatePath.(blocksize*i + b) <- !ppdHJMPath.(i).(b) ;
-      done
+      !pdDiscountingRatePath.(i) <- !ppdHJMPath.(i).(0) ;
     done ;
 
 
     (* 15% of the time goes here *)
-    ignore @@ discount_Factors_Blocking !pdPayoffDiscountFactors iN dYears !pdDiscountingRatePath blocksize;
+    discount_Factors_Blocking pdPayoffDiscountFactors iN dYears !pdDiscountingRatePath ;
 
 
     (* now we compute discount factors along the swap path *)
     for i = 0 to (!iSwapVectorLength-1) do
-      for b = 0 to (blocksize-1) do
-        !pdSwapRatePath.(i*blocksize + b) <-
-          !ppdHJMPath.(!iSwapStartTimeIndex).(i*blocksize + b) ;
-      done
+      !pdSwapRatePath.(i) <-
+        !ppdHJMPath.(!iSwapStartTimeIndex).(i) ;
     done ;
-    ignore @@ discount_Factors_Blocking !pdSwapDiscountFactors !iSwapVectorLength !dSwapVectorYears !pdSwapRatePath blocksize ;
+    ignore @@ discount_Factors_Blocking pdSwapDiscountFactors !iSwapVectorLength !dSwapVectorYears !pdSwapRatePath ;
 
 
     (* ======================== *)
     (* Simulation *)
-    for b = 0 to (blocksize-1) do
-      let dFixedLegValue = ref 0.0 in
-      for i = 0 to (!iSwapVectorLength-1) do
-        dFixedLegValue := !dFixedLegValue +. !pdSwapPayoffs.(i)*. !pdSwapDiscountFactors.(i*blocksize + b)
-      done ;
-      dSwaptionPayoff := dmax (!dFixedLegValue -. 1.0) 0. ;
-
-      dDiscSwaptionPayoff := !dSwaptionPayoff*. !pdPayoffDiscountFactors.(!iSwapStartTimeIndex*blocksize + b) ;
-
-      (* ========= end simulation ====================================== *)
-
-      (* accumulate into the aggregating variables ===================== *)
-      dSumSimSwaptionPrice := !dSumSimSwaptionPrice +. !dDiscSwaptionPayoff ;
-      dSumSquareSimSwaptionPrice := !dSumSquareSimSwaptionPrice +. !dDiscSwaptionPayoff *. !dDiscSwaptionPayoff ;
+    let dFixedLegValue = ref 0.0 in
+    for i = 0 to (!iSwapVectorLength-1) do
+      dFixedLegValue := !dFixedLegValue +. !pdSwapPayoffs.(i)*. pdSwapDiscountFactors.(i)
     done ;
+    dSwaptionPayoff := dmax (!dFixedLegValue -. 1.0) 0. ;
+
+    dDiscSwaptionPayoff := !dSwaptionPayoff*. pdPayoffDiscountFactors.(!iSwapStartTimeIndex) ;
+
+    (* ========= end simulation ====================================== *)
+
+    (* accumulate into the aggregating variables ===================== *)
+    dSumSimSwaptionPrice := !dSumSimSwaptionPrice +. !dDiscSwaptionPayoff ;
+    dSumSquareSimSwaptionPrice := !dSumSquareSimSwaptionPrice +. !dDiscSwaptionPayoff *. !dDiscSwaptionPayoff ;
 
 
 
-    l := !l + blocksize
+    l := !l + 1
   done ;
 
   (* Simulation Results Stored *)
-  dSimSwaptionMeanPrice := !dSumSimSwaptionPrice/.(float_of_int lTrials) ;
-  dSimSwaptionStdError := sqrt
+  let dSimSwaptionMeanPrice = !dSumSimSwaptionPrice/.(float_of_int lTrials) in
+  let dSimSwaptionStdError = sqrt
       ((!dSumSquareSimSwaptionPrice-. !dSumSimSwaptionPrice*. !dSumSimSwaptionPrice/.(float_of_int lTrials))
        /.
        (float_of_int (lTrials-1))
       )
-      /. sqrt (float_of_int lTrials) ;
+      /. sqrt (float_of_int lTrials) in
 
   (* results returned *)
-  pdSwaptionPrice.(0) <- dSimSwaptionMeanPrice ;
-  pdSwaptionPrice.(1) <- dSimSwaptionStdError ;
-
-  1
+  dSimSwaptionMeanPrice, dSimSwaptionStdError
 
 
 (*  ================================================= *)
@@ -505,11 +454,8 @@ let chunksize = ref 0
 
 let worker () =
 
-  let pdSwaptionPrice = [| ref 0.0 ; ref 0.0|] in
-
   for i = 0 to (!nSwaptions-1) do
-    ignore @@ hjm_Swaption_Blocking
-      pdSwaptionPrice
+    let price, error = hjm_Swaption_Blocking
       !swaptions.(i).dStrike
       !swaptions.(i).dCompounding
       !swaptions.(i).dMaturity
@@ -520,10 +466,10 @@ let worker () =
       !swaptions.(i).dYears
       !swaptions.(i).pdYield
       !swaptions.(i).ppdFactors
-      (Int64.add !swaption_seed (Int64.of_int i))
-      !num_trials block_size 0 ;
-    !swaptions.(i).dSimSwaptionMeanPrice <- !(pdSwaptionPrice.(0)) ;
-    !swaptions.(i).dSimSwaptionStdError <- !(pdSwaptionPrice.(1))
+      (Int64.(add !swaption_seed (of_int i)))
+      !num_trials 0 in
+    !swaptions.(i).dSimSwaptionMeanPrice <- price ;
+    !swaptions.(i).dSimSwaptionStdError <- error ;
   done
 
 

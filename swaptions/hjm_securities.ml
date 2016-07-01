@@ -616,7 +616,7 @@ let main argc argv =
       (* 5 to 20 years in 3 month intervals *)
       ; dYears = 5.0 +. ((60. *. ranUnif seed))*.0.25
       (* strikes ranging from 0.1 to 5.0 in steps of 0.1 *)
-      ; dStrike = 0.1 +. ((49. *. ranUnif seed))*.0.1
+      ; dStrike = 0.1 +. (float_of_int (int_of_float (49. *. ranUnif seed)))*.0.1
       ; dCompounding = 0.
       ; dMaturity = 1.0
       ; dTenor = 2.0

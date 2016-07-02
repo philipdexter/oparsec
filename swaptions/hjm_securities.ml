@@ -159,10 +159,11 @@ let cumNormalInv u =
     end
 
 let discount_Factors_Blocking
-    pdDiscountFactors
     iN
     dYears
     pdRatePath =
+
+  let pdDiscountFactors = Array.make iN 0.0 in
 
   let ddelt = dYears/.(float_of_int iN) in
 
@@ -170,17 +171,18 @@ let discount_Factors_Blocking
 
   (* initializing the discount factor vector *)
   for i = 0 to (iN-1) do
-    pdDiscountFactors.(i) <- 1.0 ;
+    pdDiscountFactors.(i) <- 1.0
   done ;
 
   for i = 1 to (iN-1) do
     for j = 0 to i-1 do
       pdDiscountFactors.(i) <- pdDiscountFactors.(i) *. pdexpRes.(j)
     done
-  done
+  done ;
+
+  pdDiscountFactors
 
 let hjm_SimPath_Forward_Blocking
-     ppdHJMPath (* Matrix that stores generated HJM path (Output) *)
      iN (* Number of time-steps *)
      iFactors (* Number of factors in the HJM framework *)
      dYears (* Number of years *)
@@ -198,17 +200,14 @@ let hjm_SimPath_Forward_Blocking
   let ddelt = dYears/.(float_of_int iN) in
   let sqrt_ddelt = sqrt(ddelt) in
 
+  let ppdHJMPath = dmatrix 0 (iN-1) 0 (iN-1) in
+
   (* ===================================================== *)
   (* t=0 forward curve stored iN first row of ppdHJMPath *)
   (* At time step 0: insert expected drift *)
   (* rest reset to 0 *)
   for j = 0 to (iN-1) do
-    ppdHJMPath.(0).(j) <- pdForward.(j) ;
-
-    for i = 1 to (iN-1) do
-      (* initializing HJMPath to zero *)
-      ppdHJMPath.(i).(j) <- 0.
-    done
+    ppdHJMPath.(0).(j) <- pdForward.(j)
   done ;
   (* ----------------------------------------------------- *)
 
@@ -250,7 +249,9 @@ let hjm_SimPath_Forward_Blocking
       (* as per formula *)
       ppdHJMPath.(j).(l) <- ppdHJMPath.(j-1).(l+1) +. pdTotalDrift.(l)*.ddelt +. sqrt_ddelt *. !dTotalShock
     done
-  done
+  done ;
+
+  ppdHJMPath
 
 let hjm_Swaption_Blocking
   dStrike
@@ -297,74 +298,48 @@ let hjm_Swaption_Blocking
 
   (* HJM Framework vectors and matrices *)
   (* Length of the HJM rate path at the time index corresponding to swaption maturity. *)
-  let iSwapVectorLength = ref 0 in
-
-  (* per Trial data *)
-  let ppdHJMPath = ref [||] in
-
+  (* This is the length of the HJM rate path at the time index *)
+  let iSwapVectorLength = int_of_float ((float_of_int iN) -. dMaturity/.ddelt +. 0.5) in
 
   let pdForward = ref [||] in
   let ppdDrifts = ref [||] in
   let pdTotalDrift = ref [||] in
 
   (* ******************************* *)
-  ppdHJMPath := dmatrix 0 (iN-1) 0 (iN-1) ; (* **** per Trial data **** *)
   pdForward := dvector 0 (iN-1) ;
   ppdDrifts := dmatrix 0 (iFactors-1) 0 (iN-2) ;
   pdTotalDrift := dvector 0 (iN-2) ;
 
   (* ================================== *)
   (* **** per Trial data **** *)
-  (* vector to store rate path along which the swaption payoff will be discounted *)
-  let pdDiscountingRatePath = ref [||] in
   (* payoff will be discounted *)
-  (* vector to store the rate path along which the swap payments made will be discounted         *)
-  let pdSwapRatePath = ref [||] in
   (* payments made will be discounted    *)
   (* vector to store swap payoffs *)
-  let pdSwapPayoffs = ref [||] in
+  let pdSwapPayoffs = dvector 0 (iSwapVectorLength - 1) in
 
 
   let iSwapStartTimeIndex = ref 0 in
   let iSwapTimePoints = ref 0 in
   let dSwapVectorYears = ref 0. in
 
-  let dSwaptionPayoff = ref 0. in
-  let dDiscSwaptionPayoff = ref 0. in
+  (* ******************************* *)
 
   (* Accumulators *)
   let dSumSimSwaptionPrice = ref 0. in
   let dSumSquareSimSwaptionPrice = ref 0. in
 
-  (* ******************************* *)
-  (* vector to store discount factors for the rate path along which the swaption *)
-  let pdPayoffDiscountFactors = Array.make iN 1. in
-  pdDiscountingRatePath := dvector 0 (iN-1) ;
-  (* ******************************* *)
-
-  (* This is the length of the HJM rate path at the time index *)
-  iSwapVectorLength := int_of_float ((float_of_int iN) -. dMaturity/.ddelt +. 0.5) ;
-  (* corresponding to swaption maturity. *)
-  (*  ******************************* *)
-  pdSwapRatePath := dvector 0 (!iSwapVectorLength - 1) ;
-  (* vector to store discount factors for the rate path along which the swap *)
-  let pdSwapDiscountFactors = Array.make !iSwapVectorLength 1. in
-  (*  ******************************* *)
-  pdSwapPayoffs := dvector 0 (!iSwapVectorLength - 1) ;
-
-
   (* Swap starts at swaption maturity *)
   iSwapStartTimeIndex := int_of_float (dMaturity/.ddelt +. 0.5) ;
   (* Total HJM time points corresponding to the swap's tenor *)
   iSwapTimePoints := int_of_float (dTenor/.ddelt +. 0.5) ;
-  dSwapVectorYears := (float_of_int !iSwapVectorLength)*.ddelt ;
+  dSwapVectorYears := (float_of_int iSwapVectorLength)*.ddelt ;
 
 
 
   (* now we store the swap payoffs in the swap payoff vector *)
   let i = ref iFreqRatio in
   while !i <= !iSwapTimePoints do
-    !pdSwapPayoffs.(!i) <- if !i != !iSwapTimePoints then
+    pdSwapPayoffs.(!i) <- if !i != !iSwapTimePoints then
         (* the bond pays coupon equal to this amount *)
         exp (dStrikeCont*.dPaymentInterval) -. 1.
       else
@@ -389,44 +364,34 @@ let hjm_Swaption_Blocking
   while !l <= lTrials-1 do
   (* For each trial a new HJM Path is generated *)
     (* GC: 51% of the time goes here *)
-    hjm_SimPath_Forward_Blocking !ppdHJMPath iN iFactors  dYears  !pdForward  !pdTotalDrift ppdFactors seedref ;
+    let ppdHJMPath = hjm_SimPath_Forward_Blocking iN iFactors  dYears  !pdForward  !pdTotalDrift ppdFactors seedref in
 
     (* now we compute the discount factor vector *)
 
-    for i = 0 to (iN-1) do
-      !pdDiscountingRatePath.(i) <- !ppdHJMPath.(i).(0) ;
-    done ;
-
+    let pdDiscountingRatePath = Array.map (fun a -> a.(0)) ppdHJMPath in
 
     (* 15% of the time goes here *)
-    discount_Factors_Blocking pdPayoffDiscountFactors iN dYears !pdDiscountingRatePath ;
+    let pdPayoffDiscountFactors = discount_Factors_Blocking iN dYears pdDiscountingRatePath in
 
+    let pdSwapRatePath = Array.init iSwapVectorLength (fun i -> ppdHJMPath.(!iSwapStartTimeIndex).(i)) in
 
-    (* now we compute discount factors along the swap path *)
-    for i = 0 to (!iSwapVectorLength-1) do
-      !pdSwapRatePath.(i) <-
-        !ppdHJMPath.(!iSwapStartTimeIndex).(i) ;
-    done ;
-    ignore @@ discount_Factors_Blocking pdSwapDiscountFactors !iSwapVectorLength !dSwapVectorYears !pdSwapRatePath ;
-
+    let pdSwapDiscountFactors = discount_Factors_Blocking iSwapVectorLength !dSwapVectorYears pdSwapRatePath in
 
     (* ======================== *)
     (* Simulation *)
     let dFixedLegValue = ref 0.0 in
-    for i = 0 to (!iSwapVectorLength-1) do
-      dFixedLegValue := !dFixedLegValue +. !pdSwapPayoffs.(i)*. pdSwapDiscountFactors.(i)
+    for i = 0 to (iSwapVectorLength-1) do
+      dFixedLegValue := !dFixedLegValue +. pdSwapPayoffs.(i)*. pdSwapDiscountFactors.(i)
     done ;
-    dSwaptionPayoff := dmax (!dFixedLegValue -. 1.0) 0. ;
+    let dSwaptionPayoff = dmax (!dFixedLegValue -. 1.0) 0. in
 
-    dDiscSwaptionPayoff := !dSwaptionPayoff*. pdPayoffDiscountFactors.(!iSwapStartTimeIndex) ;
+    let dDiscSwaptionPayoff = dSwaptionPayoff*. pdPayoffDiscountFactors.(!iSwapStartTimeIndex) in
 
     (* ========= end simulation ====================================== *)
 
     (* accumulate into the aggregating variables ===================== *)
-    dSumSimSwaptionPrice := !dSumSimSwaptionPrice +. !dDiscSwaptionPayoff ;
-    dSumSquareSimSwaptionPrice := !dSumSquareSimSwaptionPrice +. !dDiscSwaptionPayoff *. !dDiscSwaptionPayoff ;
-
-
+    dSumSimSwaptionPrice := !dSumSimSwaptionPrice +. dDiscSwaptionPayoff ;
+    dSumSquareSimSwaptionPrice := !dSumSquareSimSwaptionPrice +. dDiscSwaptionPayoff *. dDiscSwaptionPayoff ;
 
     l := !l + 1
   done ;

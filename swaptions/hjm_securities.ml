@@ -163,16 +163,11 @@ let discount_Factors_Blocking
     dYears
     pdRatePath =
 
-  let pdDiscountFactors = Array.make iN 0.0 in
+  let pdDiscountFactors = Array.make iN 1.0 in
 
   let ddelt = dYears/.(float_of_int iN) in
 
   let pdexpRes = Array.init (iN-1) (fun i -> exp (-.pdRatePath.(i)*.ddelt)) in
-
-  (* initializing the discount factor vector *)
-  for i = 0 to (iN-1) do
-    pdDiscountFactors.(i) <- 1.0
-  done ;
 
   for i = 1 to (iN-1) do
     for j = 0 to i-1 do
